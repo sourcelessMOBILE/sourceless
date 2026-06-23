@@ -4,6 +4,7 @@ const API = process.env.EXPO_PUBLIC_BACKEND_URL;
 const TOKEN_KEY = 'sg_token';
 const USER_KEY = 'sg_user';
 
+export const API_BASE = API;
 export type User = { id: string; email: string; full_name?: string };
 
 export async function getToken(): Promise<string | null> {

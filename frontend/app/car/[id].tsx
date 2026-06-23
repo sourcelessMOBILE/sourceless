@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Dimensions, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +7,10 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 
-import { api } from '@/src/api';
+import { api, API_BASE, getToken } from '@/src/api';
 import { colors, spacing, radius, font } from '@/src/theme';
+
+const SCREEN_W = Dimensions.get('window').width;
 
 export default function CarDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -17,6 +19,7 @@ export default function CarDetailScreen() {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -53,6 +56,19 @@ export default function CarDetailScreen() {
     catch (e: any) { setErr(e.message); setUploading(false); }
   };
 
+  const exportPdf = async () => {
+    if (!id) return;
+    setExporting(true);
+    setErr(null);
+    try {
+      const tok = await getToken();
+      if (!tok) throw new Error('Not authenticated');
+      const url = `${API_BASE}/api/cars/${id}/diagnostics/export?token=${encodeURIComponent(tok)}`;
+      await Linking.openURL(url);
+    } catch (e: any) { setErr(e.message); }
+    finally { setExporting(false); }
+  };
+
   if (loading) {
     return <View style={[styles.safe, styles.center]}><ActivityIndicator color={colors.brand} /></View>;
   }
@@ -62,6 +78,7 @@ export default function CarDetailScreen() {
 
   const sev = (s?: string) => s === 'critical' ? colors.error : s === 'warning' ? colors.warning : colors.info;
   const fmt = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString() : '—';
+  const photos: string[] = (car.photos && car.photos.length ? car.photos : (car.photo_base64 ? [car.photo_base64] : []));
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']} testID="car-detail-screen">
@@ -69,23 +86,39 @@ export default function CarDetailScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxxl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.brand} />}>
         <View style={styles.hero}>
-          {car.photo_base64 ? (
-            <Image source={{ uri: car.photo_base64 }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+          {photos.length > 0 ? (
+            <ScrollView
+              horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+              testID="photo-gallery">
+              {photos.map((p, i) => (
+                <Image key={i} source={{ uri: p }} style={{ width: SCREEN_W, height: 280 }} contentFit="cover" testID={`gallery-photo-${i}`} />
+              ))}
+            </ScrollView>
           ) : (
-            <View style={[styles.heroPh]}>
+            <View style={styles.heroPh}>
               <Ionicons name="car-sport" size={64} color={colors.brand} />
             </View>
           )}
-          <LinearGradient colors={["transparent", colors.surface]} style={styles.heroOverlay} />
-          <View style={styles.heroHeader}>
+          <LinearGradient colors={["transparent", colors.surface]} style={styles.heroOverlay} pointerEvents="none" />
+          <View style={styles.heroHeader} pointerEvents="box-none">
             <Pressable testID="detail-back" onPress={() => router.back()} hitSlop={10}>
               <Ionicons name="chevron-back" size={28} color={colors.onSurface} />
             </Pressable>
-            <Pressable testID="delete-car" onPress={remove} hitSlop={10}>
-              <Ionicons name="trash-outline" size={22} color={colors.error} />
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              <Pressable testID="edit-car" onPress={() => router.push(`/car/edit/${id}`)} hitSlop={10}>
+                <Ionicons name="create-outline" size={22} color={colors.brand} />
+              </Pressable>
+              <Pressable testID="delete-car" onPress={remove} hitSlop={10}>
+                <Ionicons name="trash-outline" size={22} color={colors.error} />
+              </Pressable>
+            </View>
           </View>
-          <View style={styles.heroFooter}>
+          {photos.length > 1 ? (
+            <View style={styles.dots} pointerEvents="none">
+              {photos.map((_, i) => <View key={i} style={styles.dot} />)}
+            </View>
+          ) : null}
+          <View style={styles.heroFooter} pointerEvents="none">
             <Text style={styles.heroPlate}>{car.plate_number}</Text>
             <Text style={styles.heroModel}>{car.producer} {car.model}</Text>
             <Text style={styles.heroSub}>{car.year} · {car.engine || '—'}</Text>
@@ -105,7 +138,19 @@ export default function CarDetailScreen() {
         <View style={styles.section}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={styles.sectionTitle}>DIAGNOSTIC HISTORY</Text>
-            <Text style={styles.count}>{history.length}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              {history.length > 0 ? (
+                <Pressable testID="export-pdf-button" onPress={exportPdf} disabled={exporting} style={styles.exportBtn} hitSlop={6}>
+                  {exporting ? <ActivityIndicator color={colors.brand} size="small" /> : (
+                    <>
+                      <Ionicons name="download-outline" size={14} color={colors.brand} />
+                      <Text style={styles.exportText}>  EXPORT</Text>
+                    </>
+                  )}
+                </Pressable>
+              ) : null}
+              <Text style={styles.count}>{history.length}</Text>
+            </View>
           </View>
           {history.length === 0 ? (
             <Text style={styles.emptyText}>No diagnostics yet. Upload an Xtool PDF below.</Text>
@@ -169,6 +214,8 @@ const styles = StyleSheet.create({
   heroPlate: { color: colors.brand, fontWeight: '800', letterSpacing: 4, fontSize: font.base },
   heroModel: { color: colors.onSurface, fontSize: 26, fontWeight: '800', marginTop: 4 },
   heroSub: { color: colors.onSurfaceTertiary, marginTop: 4 },
+  dots: { position: 'absolute', top: spacing.lg, alignSelf: 'center', flexDirection: 'row', gap: 4 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.onSurface, opacity: 0.6 },
   section: { padding: spacing.lg },
   sectionTitle: { color: colors.brand, fontSize: font.sm, letterSpacing: 3, fontWeight: '800', marginBottom: spacing.md },
   count: { color: colors.onSurfaceTertiary, fontSize: font.sm, letterSpacing: 1, fontWeight: '700' },
@@ -187,4 +234,6 @@ const styles = StyleSheet.create({
   stickyBar: { padding: spacing.lg, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
   uploadBtn: { backgroundColor: colors.brand, paddingVertical: spacing.lg, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   uploadText: { color: colors.onBrand, fontWeight: '800', letterSpacing: 2, fontSize: font.lg },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.brand, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.sm },
+  exportText: { color: colors.brand, fontSize: font.sm, letterSpacing: 2, fontWeight: '800' },
 });

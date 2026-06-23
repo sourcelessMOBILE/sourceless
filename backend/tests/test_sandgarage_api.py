@@ -209,6 +209,57 @@ class TestDiagnostics:
             assert any("P0171" in c for c in codes) or any("P0" in c for c in codes)
 
 
+# ---------- Multi-photo gallery (iteration 2) ----------
+class TestPhotos:
+    def test_update_photos_persists(self, api, auth_headers):
+        cid = TestCars.created_id
+        assert cid
+        photo_a = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Zo5gT4AAAAASUVORK5CYII="
+        photo_b = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPj/HwAEAgH/0E0VugAAAABJRU5ErkJggg=="
+        r = api.put(f"{BASE_URL}/api/cars/{cid}",
+                    json={"photos": [photo_a, photo_b]}, headers=auth_headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert isinstance(body.get("photos"), list) and len(body["photos"]) == 2
+        # back-compat: photo_base64 == first photo
+        assert body.get("photo_base64") == photo_a
+        # GET verifies persistence
+        r2 = api.get(f"{BASE_URL}/api/cars/{cid}", headers=auth_headers)
+        assert r2.status_code == 200
+        body2 = r2.json()
+        assert body2["photos"] == [photo_a, photo_b]
+        assert body2["photo_base64"] == photo_a
+
+
+# ---------- PDF Export (iteration 2) ----------
+class TestExportPDF:
+    def test_export_returns_pdf(self, demo_token):
+        cid = TestCars.created_id
+        assert cid
+        r = requests.get(
+            f"{BASE_URL}/api/cars/{cid}/diagnostics/export",
+            params={"token": demo_token}, timeout=30
+        )
+        assert r.status_code == 200, r.text
+        assert r.headers.get("content-type", "").startswith("application/pdf")
+        assert r.content[:4] == b"%PDF", f"Not a PDF, starts with {r.content[:10]!r}"
+        assert len(r.content) > 500
+
+    def test_export_missing_token(self):
+        cid = TestCars.created_id
+        r = requests.get(f"{BASE_URL}/api/cars/{cid}/diagnostics/export", timeout=10)
+        # Missing required query param -> FastAPI 422; OR our 401. Accept either as "no access".
+        assert r.status_code in (401, 422)
+
+    def test_export_invalid_token(self):
+        cid = TestCars.created_id
+        r = requests.get(
+            f"{BASE_URL}/api/cars/{cid}/diagnostics/export",
+            params={"token": "not-a-real-jwt"}, timeout=10
+        )
+        assert r.status_code == 401
+
+
 # ---------- Cleanup (delete car -> diagnostics) ----------
 class TestCleanup:
     def test_delete_car_cleans_diagnostics(self, api, auth_headers):

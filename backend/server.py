@@ -1,9 +1,11 @@
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import io
 import logging
 import re
 import json
@@ -15,6 +17,12 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
 
@@ -75,7 +83,8 @@ class CarBase(BaseModel):
     tyre_type: Optional[str] = None
     colour: Optional[str] = None
     plate_number: str
-    photo_base64: Optional[str] = None
+    photo_base64: Optional[str] = None  # legacy single photo (kept for back-compat)
+    photos: Optional[List[str]] = None  # base64 data URIs
 
 
 class CarCreate(CarBase):
@@ -93,6 +102,7 @@ class CarUpdate(BaseModel):
     colour: Optional[str] = None
     plate_number: Optional[str] = None
     photo_base64: Optional[str] = None
+    photos: Optional[List[str]] = None
 
 
 class Car(CarBase):
@@ -196,6 +206,10 @@ async def me(current: dict = Depends(get_current_user)):
 
 # ---------------- Cars Routes ----------------
 def _car_out(doc: dict) -> dict:
+    photos = doc.get('photos') or []
+    legacy = doc.get('photo_base64')
+    if not photos and legacy:
+        photos = [legacy]
     return {
         "id": doc['id'],
         "user_id": doc['user_id'],
@@ -208,7 +222,8 @@ def _car_out(doc: dict) -> dict:
         "tyre_type": doc.get('tyre_type'),
         "colour": doc.get('colour'),
         "plate_number": doc.get('plate_number', ''),
-        "photo_base64": doc.get('photo_base64'),
+        "photo_base64": photos[0] if photos else None,
+        "photos": photos,
         "created_at": doc.get('created_at', ''),
     }
 
@@ -427,6 +442,110 @@ async def search_trouble_codes(q: str = "", current: dict = Depends(get_current_
             })
     results.sort(key=lambda r: r.get('scanned_at', ''), reverse=True)
     return results
+
+
+@api_router.get("/cars/{car_id}/diagnostics/export")
+async def export_diagnostics_pdf(car_id: str, token: str):
+    """Export per-car diagnostic history as a downloadable PDF.
+
+    Uses ?token=... (JWT) instead of Authorization header so a plain link / anchor
+    can trigger the browser download without custom headers.
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get('sub')
+    except JWTError:
+        user_id = None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+
+    user = await users_col.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid user")
+
+    car = await cars_col.find_one({"id": car_id, "user_id": user_id}, {"_id": 0})
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+    entries = await diagnostics_col.find(
+        {"car_id": car_id, "user_id": user_id}, {"_id": 0}
+    ).to_list(1000)
+    entries.sort(key=lambda d: d.get('scanned_at', ''), reverse=True)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm,
+                            topMargin=18*mm, bottomMargin=18*mm,
+                            title=f"Diagnostics - {car.get('plate_number','')}")
+    base_styles = getSampleStyleSheet()
+    accent = rl_colors.HexColor("#A7FF52")
+    dark = rl_colors.HexColor("#09090B")
+    muted = rl_colors.HexColor("#71717A")
+    h1 = ParagraphStyle('h1', parent=base_styles['Heading1'], textColor=dark, fontSize=20, spaceAfter=4, leading=24)
+    h2 = ParagraphStyle('h2', parent=base_styles['Heading2'], textColor=dark, fontSize=13, spaceBefore=12, spaceAfter=6)
+    small = ParagraphStyle('small', parent=base_styles['Normal'], textColor=muted, fontSize=9)
+    body = ParagraphStyle('body', parent=base_styles['Normal'], fontSize=10, leading=14)
+    brand = ParagraphStyle('brand', parent=base_styles['Normal'], textColor=accent, fontSize=10, leading=12, spaceAfter=2)
+
+    story = []
+    story.append(Paragraph("&#9673; SOURCELESS &middot; SAND GARAGE", brand))
+    story.append(Paragraph(f"Diagnostics Report &mdash; {car.get('producer','')} {car.get('model','')}", h1))
+    story.append(Paragraph(
+        f"Plate: <b>{car.get('plate_number','')}</b> &nbsp;|&nbsp; Year: {car.get('year','')} &nbsp;|&nbsp; Engine: {car.get('engine','') or '—'}",
+        small))
+    story.append(Paragraph(
+        f"Insurance: {car.get('insurance_expiry') or '—'} &nbsp;|&nbsp; MOT: {car.get('mot_expiry') or '—'} &nbsp;|&nbsp; Tyres: {car.get('tyre_type') or '—'} &nbsp;|&nbsp; Colour: {car.get('colour') or '—'}",
+        small))
+    story.append(Paragraph(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}", small))
+    story.append(Spacer(1, 8))
+
+    if not entries:
+        story.append(Paragraph("No diagnostic scans recorded for this vehicle.", body))
+    else:
+        for entry in entries:
+            scanned = entry.get('scanned_at', '')
+            try:
+                pretty = datetime.fromisoformat(scanned.replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
+            except Exception:
+                pretty = scanned
+            story.append(Paragraph(f"Scan &mdash; {pretty}", h2))
+            story.append(Paragraph(f"Source file: {entry.get('source_filename') or '—'}", small))
+            codes = entry.get('trouble_codes') or []
+            if not codes:
+                story.append(Spacer(1, 4))
+                story.append(Paragraph("No trouble codes detected.", body))
+                continue
+            data = [["CODE", "DESCRIPTION", "SYSTEM", "SEVERITY"]]
+            for tc in codes:
+                data.append([
+                    str(tc.get('code', '') or ''),
+                    str(tc.get('description', '') or ''),
+                    str(tc.get('system', '') or ''),
+                    str(tc.get('severity', '') or '').upper(),
+                ])
+            tbl = Table(data, colWidths=[28*mm, 90*mm, 28*mm, 24*mm], repeatRows=1)
+            tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), dark),
+                ('TEXTCOLOR', (0, 0), (-1, 0), accent),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [rl_colors.whitesmoke, rl_colors.white]),
+                ('GRID', (0, 0), (-1, -1), 0.25, rl_colors.HexColor('#D4D4D8')),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ]))
+            story.append(tbl)
+            story.append(Spacer(1, 6))
+
+    doc.build(story)
+    buf.seek(0)
+    filename = f"diagnostics_{(car.get('plate_number') or 'car').replace(' ', '_')}.pdf"
+    return StreamingResponse(
+        buf, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 # Health/root
