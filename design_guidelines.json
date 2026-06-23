@@ -1,0 +1,159 @@
+{
+  "app_name": "SourceLess Sand Garage",
+  "personality": "7 Dark-First Utility DARK",
+  "personality_one_liner": "A sharp, tactical command center for vehicle diagnostics, using OLED-friendly darks and aggressive lime-green terminal accents.",
+  "color": {
+    "surface": "#09090B",
+    "onSurface": "#FAFAFA",
+    "surfaceSecondary": "#18181B",
+    "onSurfaceSecondary": "#E4E4E7",
+    "surfaceTertiary": "#27272A",
+    "onSurfaceTertiary": "#A1A1AA",
+    "surfaceInverse": "#FAFAFA",
+    "onSurfaceInverse": "#09090B",
+    "brand": "#A7FF52",
+    "brandPrimary": "#A7FF52",
+    "onBrandPrimary": "#09090B",
+    "brandSecondary": "#649931",
+    "onBrandSecondary": "#FAFAFA",
+    "brandTertiary": "#2D4716",
+    "onBrandTertiary": "#A7FF52",
+    "success": "#A7FF52",
+    "onSuccess": "#09090B",
+    "warning": "#FBBF24",
+    "onWarning": "#09090B",
+    "error": "#EF4444",
+    "onError": "#FAFAFA",
+    "info": "#38BDF8",
+    "onInfo": "#09090B",
+    "border": "#27272A",
+    "borderStrong": "#3F3F46",
+    "divider": "#27272A"
+  },
+  "typography": {
+    "displayFontFamily": "Rajdhani",
+    "textFontFamily": "IBM Plex Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Dense but scannable, sharp metrics with compact margins. No excessive white space.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": [
+      "Use solid surfaceSecondary and surfaceTertiary for elevated sections"
+    ],
+    "dont's": [
+      "No glass or blur. Keep it sharp and tactical for data density."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "solid surfaceSecondary",
+      "android": "solid surfaceSecondary",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Garage",
+      "purpose": "Overview of all personal cars with immediate visibility into expiring insurance or MOT.",
+      "states": {
+        "loading": "Centered sleek spinner in brandPrimary.",
+        "empty": "Technical illustration of an empty grid. Text: 'No vehicles in the garage.' Primary CTA 'Add Vehicle'.",
+        "error": "Text: 'Unable to load garage.' Retry button."
+      },
+      "layout": "Scrollable list of car cards. Top section features 'Critical Alerts' for MOT/Insurance expiring within 30 days (highlighted with warning/error tokens). Car cards use a dense grid auto-layout: image on the left/top, sharp typography for Plate and Model, and right-aligned status dots."
+    },
+    {
+      "name": "Diagnostics",
+      "purpose": "Global search terminal for vehicle trouble codes across all cars.",
+      "states": {
+        "loading": "Pulsing terminal block.",
+        "empty": "Type a trouble code to scan the database.",
+        "error": "Search failed. Retry."
+      },
+      "layout": "Sticky search input at the top. Below, a list of matching trouble codes grouped by car and date. Use monospace-like alignment for the trouble codes (e.g., P0171)."
+    },
+    {
+      "name": "Add Car",
+      "purpose": "Form to input detailed car telemetry and details.",
+      "states": {
+        "loading": "Spinner overlay.",
+        "empty": "N/A",
+        "error": "Failed to save car. Retry."
+      },
+      "layout": "Single column form with labels above inputs. Fields: Producer, Model, Year, Engine, Insurance Expiry, MOT, Tyre type, Colour, Plate Number, Photo. Bottom-sticky 'Save Vehicle' CTA. Includes image picker for the car photo."
+    },
+    {
+      "name": "Profile",
+      "purpose": "User settings and multi-user session management.",
+      "states": {
+        "loading": "Skeleton loader.",
+        "empty": "N/A",
+        "error": "Failed to load profile."
+      },
+      "layout": "Simple list of settings, including 'Logout', 'Account Details', and app preferences."
+    },
+    {
+      "name": "Car Detail",
+      "purpose": "Deep dive into a specific car's specifications and diagnostic history.",
+      "states": {
+        "loading": "Skeleton of specs and history.",
+        "empty": "No diagnostics run yet.",
+        "error": "Failed to load vehicle telemetry."
+      },
+      "layout": "Hero image of the car with top-to-bottom gradient scrim. Specs listed in a dense, 2-column grid. Below specs: 'Upload Xtool PDF' button, followed by a chronological list of past trouble codes. Sticky 'Upload' CTA."
+    }
+  ],
+  "images": {
+    "hero_car_1": {
+      "url": "https://images.unsplash.com/photo-1760688963190-71286798f839?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHw0fHxwcmVtaXVtJTIwc3BvcnRzJTIwY2FyJTIwZGFyayUyMGdhcmFnZXxlbnwwfHx8fDE3ODIyMTA2MjF8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Dark premium car in a garage"
+    },
+    "hero_car_2": {
+      "url": "https://images.unsplash.com/photo-1721007111556-461b09063ffc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwxfHxwcmVtaXVtJTIwc3BvcnRzJTIwY2FyJTIwZGFyayUyMGdhcmFnZXxlbnwwfHx8fDE3ODIyMTA2MjF8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "White sports car at night"
+    },
+    "diagnostic_scene": {
+      "url": "https://images.pexels.com/photos/4116193/pexels-photo-4116193.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Mechanic using diagnostic tool"
+    }
+  },
+  "instructions_to_main_agent": [
+    "The prompt suggested 'dark blue/cyan', but a real-time web crawl of sourceless.net verified their brand uses Neon Lime Green (#A7FF52) on deep dark backgrounds. The palette has been built around this verified data.",
+    "Follow 'Dark-First Utility' UI personality: avoid glassmorphism, use solid deep surfaces (surfaceSecondary, surfaceTertiary), and rely on sharp, aggressive contrast.",
+    "Use Phosphor icons heavily (filled for active, outlined for inactive).",
+    "Implement an alert banner component for MOT/Insurance expiring within 30 days.",
+    "Use 'brandPrimary' (#A7FF52) sparingly for accents, progress bars, and active states—treat it like an OLED dashboard highlight.",
+    "In the diagnostic history, render the trouble codes (e.g., P0171) in a high-contrast label/chip for easy scanning.",
+    "Ensure 'Upload Xtool Diagnose PDF' CTA is highly visible on the Car Detail screen."
+  ]
+}
