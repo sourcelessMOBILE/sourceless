@@ -66,7 +66,7 @@ export default function DiagnosticsScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <Pressable testID={`code-row-${item.code}`} onPress={() => router.push(`/car/${item.car_id}`)} style={styles.row}>
+            <Pressable testID={`code-row-${item.code}`} onPress={() => router.push(`/code/${item.code}`)} style={styles.row}>
               <View style={[styles.codePill, { borderColor: severityColor(item.severity) }]}>
                 <Text style={[styles.codeText, { color: severityColor(item.severity) }]}>{item.code}</Text>
               </View>

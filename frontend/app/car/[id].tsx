@@ -1,11 +1,13 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Dimensions, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, RefreshControl, Dimensions, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 import { api, API_BASE, getToken } from '@/src/api';
 import { colors, spacing, radius, font } from '@/src/theme';
@@ -64,7 +66,27 @@ export default function CarDetailScreen() {
       const tok = await getToken();
       if (!tok) throw new Error('Not authenticated');
       const url = `${API_BASE}/api/cars/${id}/diagnostics/export?token=${encodeURIComponent(tok)}`;
-      await Linking.openURL(url);
+      const filename = `diagnostics_${(car?.plate_number || 'car').replace(/\s+/g, '_')}.pdf`;
+
+      if (Platform.OS === 'web') {
+        await Linking.openURL(url);
+        return;
+      }
+
+      const destDir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory;
+      const dest = `${destDir}${filename}`;
+      const dl = await FileSystem.downloadAsync(url, dest);
+      if (dl.status !== 200) throw new Error(`Download failed (${dl.status})`);
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(dl.uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Share diagnostics report',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        await Linking.openURL(url);
+      }
     } catch (e: any) { setErr(e.message); }
     finally { setExporting(false); }
   };
@@ -166,10 +188,14 @@ export default function CarDetailScreen() {
                 ) : (
                   <View style={styles.codesWrap}>
                     {entry.trouble_codes.map((tc: any, i: number) => (
-                      <View key={`${tc.code}-${i}`} style={[styles.codeChip, { borderColor: sev(tc.severity) }]} testID={`code-chip-${tc.code}`}>
+                      <Pressable
+                        key={`${tc.code}-${i}`}
+                        onPress={() => router.push(`/code/${tc.code}`)}
+                        testID={`code-chip-${tc.code}`}
+                        style={[styles.codeChip, { borderColor: sev(tc.severity) }]}>
                         <Text style={[styles.codeText, { color: sev(tc.severity) }]}>{tc.code}</Text>
                         {tc.description ? <Text style={styles.codeDesc} numberOfLines={2}>{tc.description}</Text> : null}
-                      </View>
+                      </Pressable>
                     ))}
                   </View>
                 )}
